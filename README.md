@@ -13,6 +13,6 @@
 8. Set Retrieval method to 'Modern SCM'
 9. Goto Source Code Management section and ...
 10. Set Project Repository to 'https://github.com/emartin-pentaho/cloudbees-shared-libraries.git'
-11. Set Credentials to a Jenkins credential with read access to that repository (possbily 'github-buildguy')
-12. Click the Behviors Add button and add 'Discover branches'
+11. Set Credentials to a Jenkins credential with read access to that repository.
+12. Click the Behaviors Add button and add 'Discover branches'
 13. Save the configuration changes.

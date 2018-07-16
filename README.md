@@ -5,7 +5,7 @@
 
 1. Click Jenkins/Manage Jenkins
 2. Goto Global Pipeline Libraries
-3. Set Library Name to 'cloudbees-shared-libraries'
+3. Set Library Name to 'jenkins-shared-libraries'
 4. Set Default Version to 'master'
 5. Set Load implicitly to 'false'
 6. Set Allow default version to be overridden to 'true'

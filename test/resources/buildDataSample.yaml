@@ -1,0 +1,40 @@
+buildProperties:
+  BUILD_PLAN_ID                  : Amazing build plan
+  MAVEN_DEFAULT_DIRECTIVES       : clean compile
+  DEFAULT_BRANCH                 : 9.0
+
+# required
+jobGroups:
+  20:
+     - jobID             :  database-model
+       scmUrl            :  ${PENTAHO_SCM_ROOT}/pentaho-commons-database.git
+       scmBranch         :  ${DEFAULT_BRANCH}
+       directives        :  += -pl .,model
+       root              :
+
+     - jobID             :  versionchecker
+       scmUrl            :  ${PENTAHO_SCM_ROOT}/pentaho-versionchecker.git
+       scmBranch         :  ${DEFAULT_BRANCH}
+       buildFramework    :  maven
+       directives        :
+       root              :
+
+  30:
+     - jobID             :  sparkl-plugin
+       scmUrl            :  ${WEBDETAILS_SCM_ROOT}/sparkl.git
+       scmBranch         :  ${DEFAULT_BRANCH}
+
+     - jobID             :  cgg-plugin
+       scmUrl            :  ${WEBDETAILS_SCM_ROOT}/cgg.git
+       scmBranch         :  ${DEFAULT_BRANCH}
+
+     - jobID             :  data-refinery
+       scmUrl            :  ${PENTAHO_SCM_ROOT}/pentaho-data-refinery.git
+       scmBranch         :  ${DEFAULT_BRANCH}
+       testable          :  false
+
+     - jobID             :  pdi-plugins
+       scmUrl            :  ${PENTAHO_SCM_ROOT}/pentaho-ee.git
+       scmBranch         :  ${DEFAULT_BRANCH}
+       root              :  data-integration/plugins
+       testable          :  AUTO

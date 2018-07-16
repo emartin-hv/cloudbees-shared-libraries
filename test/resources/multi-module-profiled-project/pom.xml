@@ -1,0 +1,41 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.pentaho.example</groupId>
+  <artifactId>multimodule-parent</artifactId>
+  <version>1.0</version>
+  <packaging>pom</packaging>
+
+  <parent>
+    <groupId>com.pentaho.parent</groupId>
+    <artifactId>external-parent</artifactId>
+    <version>1.0</version>
+  </parent>
+
+  <profiles>
+    <profile>
+      <id>profile-A</id>
+      <activation>
+        <property>
+          <name>!skipDefault</name>
+        </property>
+      </activation>
+      <modules>
+        <module>sub-1</module>
+        <module>sub-2</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>profile-B</id>
+      <activation>
+        <property>
+          <name>!skipDefault</name>
+        </property>
+      </activation>
+      <modules>
+        <module>sub-3</module>
+      </modules>
+    </profile>
+  </profiles>
+</project>

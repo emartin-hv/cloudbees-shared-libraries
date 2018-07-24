@@ -36,9 +36,9 @@ def call(BuildData buildData) {
   println "Checking out projects..."
   println "Configured checkout chunk size: ${buildProperties.getInt(PARALLEL_CHECKOUT_CHUNKSIZE)}"
 
-  // Collect all job items into a single list with distinct checkouts that are not NOOP
-  List jobItems = buildMap.collectMany { String key, List value -> value }.findAll { !it.execNoop }
-  jobItems.unique { it.scmLabel }
+  // Collect all job items into a single list with distinct checkouts excluding noop
+  List jobItems = buildMap.collectMany { String key, List value -> value.findAll { JobItem ji -> !ji.execNoop } }
+  jobItems.unique { JobItem ji -> ji.scmLabel }
 
   // if no chunk value was specified don't split it
   int chunkSize = buildProperties.getInt(PARALLEL_CHECKOUT_CHUNKSIZE) ?: jobItems.size()

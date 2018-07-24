@@ -45,7 +45,15 @@ def call(BuildData buildData) {
     println "Running parallel job group [${jobGroup}]..."
 
     try {
-      Map entries = jobItems.collectEntries { JobItem jobItem ->
+      List buildableJobItems = jobItems.findAll { JobItem ji -> !ji.execNoop }
+
+      // no jobItems to build, leave
+      if (!buildableJobItems){
+        println "No job items to build for this group."
+        return
+      }
+
+      Map entries = buildableJobItems.collectEntries { JobItem jobItem ->
         IBuilder builder = BuilderFactory.getBuildManager(jobItem, [buildData: buildData, dsl: this])
 
         Closure buildExecution = builder.getBuildClosure(jobItem)
@@ -61,6 +69,7 @@ def call(BuildData buildData) {
           }
         }]
       }
+
       entries.failFast = !ignoreFailures
       parallel entries
     } catch (Throwable e) {

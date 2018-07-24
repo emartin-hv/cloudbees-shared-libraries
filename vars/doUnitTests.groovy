@@ -42,8 +42,8 @@ def call(BuildData buildData) {
   println "Running unit tests..."
   println "Configured test chunk size: ${buildProperties[PARALLEL_UNIT_TESTS_CHUNKSIZE]}"
 
-  // Collect all job items into a single list
-  List jobItems = buildMap.collectMany { String key, List value -> value }
+  // Collect all job items into a single list without noop items
+  List jobItems = buildMap.collectMany { String key, List value -> value.findAll { JobItem ji -> !ji.execNoop } }
 
   // if no chunk value was specified don't split it
   int chunkSize = buildProperties.getInt(PARALLEL_UNIT_TESTS_CHUNKSIZE) ?: jobItems.size()

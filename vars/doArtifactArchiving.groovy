@@ -20,9 +20,15 @@
  * explicitly covering such access.
  */
 
+
+import groovy.time.TimeCategory
+import groovy.time.TimeDuration
 import org.hitachivantara.ci.JobItem
 import org.hitachivantara.ci.config.BuildData
 import hudson.model.Result
+
+import java.nio.file.Files
+import java.nio.file.Paths
 
 import static org.hitachivantara.ci.config.BuildData.*
 
@@ -35,46 +41,123 @@ def call(BuildData buildData) {
     return
   }
 
+  if (!buildProperties.getBool(ARCHIVE_ARTIFACTS)) {
+    println "Artifact archiving is disabled (ARCHIVE_ARTIFACTS: false)."
+    return
+  }
+
+  Date startDt = new Date()
+  println "Running artifacts archiving."
+
   Boolean ignoreFailures = buildProperties.getBool(IGNORE_PIPELINE_FAILURE)
+  Boolean copyToFolderAvailable = isCopyToFolderAvailable()
 
-  println "Running artifacts archiving..."
+  if (copyToFolderAvailable) {
+    println "Archiving artifacts by copying them to ${currentBuild.rawBuild.artifactsDir}"
+  } else {
+    println "Archiving artifacts resorting to the plugin"
+  }
 
-  buildMap.each { String jobGroup, List jobItems ->
-    println "Running parallel job group [${jobGroup}]..."
+  try {
+    buildMap.each { String jobGroup, List jobItems ->
 
-    try {
-      Map entries = jobItems.collectEntries { JobItem jobItem ->
-        [(jobItem.jobID): {
-          node(buildProperties[SLAVE_NODE_LABEL]) {
-            try {
-              if ( buildProperties[ARCHIVE_ARTIFACTS] && jobItem.isArchivable()) {
-                println "Archiving artifacts for job item ${jobItem.jobID} with pattern ${jobItem.artifactsArchivePattern}"
+      try {
+        // filter out non archivable and noop
+        List archivableJobItems = jobItems.findAll { JobItem ji -> !ji.execNoop && ji.archivable }
 
-                dir(jobItem.buildWorkDir) {
-                  archiveArtifacts(
-                    artifacts: jobItem.artifactsArchivePattern,
-                    excludes: '.git/**/*',
-                    allowEmptyArchive: true,
-                    fingerprint: false
-                  )
-                }
+        // no jobItems to archive, leave
+        if (!archivableJobItems) {
+          println "No archivable job items for this group."
+          return
+        }
+
+        Map entries = archivableJobItems.collectEntries { JobItem jobItem ->
+
+          Closure archiveArtifacts = copyToFolderAvailable ?
+            archiveArtifactsByCopy(jobItem, buildProperties.getBool(ALLOW_ATOMIC_SCM_CHECKOUTS)) : archiveArtifactsByPlugin(jobItem)
+
+          [(jobItem.jobID): {
+            node(buildProperties[SLAVE_NODE_LABEL]) {
+              try {
+                archiveArtifacts()
+
+              } catch (Throwable e) {
+                buildData.error(jobItem, e)
+                throw e
               }
-            } catch (Throwable e) {
-              buildData.error(jobItem, e)
-              throw e
             }
-          }
-        }]
-      }
-      entries.failFast = !ignoreFailures
-      parallel entries
-    } catch (Throwable e) {
-      println "Artifact archiving has failed: ${e}"
-      if (ignoreFailures) {
-        currentBuild.result = Result.UNSTABLE
-      } else {
-        throw e
+          }]
+        }
+        entries.failFast = !ignoreFailures
+        parallel entries
+      } catch (Throwable e) {
+        println "Artifact archiving has failed: ${e}"
+        if (ignoreFailures) {
+          currentBuild.result = Result.UNSTABLE
+        } else {
+          throw e
+        }
       }
     }
+  } finally {
+    Date endDt = new Date()
+    TimeDuration td = TimeCategory.minus(endDt, startDt)
+    println "Finished artifacts archiving [${td}]"
   }
+}
+
+Boolean isCopyToFolderAvailable() {
+  return Files.exists(Paths.get(currentBuild.rawBuild.rootDir as String))
+}
+
+Closure archiveArtifactsByPlugin(JobItem jobItem) {
+  return { ->
+    dir(jobItem.buildWorkDir) {
+      archiveArtifacts(
+        artifacts: jobItem.artifactsArchivePattern,
+        excludes: '.git/**/*',
+        allowEmptyArchive: true,
+        fingerprint: false
+      )
+    }
+  }
+}
+
+Closure archiveArtifactsByCopy(JobItem jobItem, Boolean allowAtomicScmCheckouts) {
+
+  String artifactsTargetDir = currentBuild.rawBuild.artifactsDir
+  artifactsTargetDir = artifactsTargetDir + File.separator
+
+  return { ->
+    List<String> artifactPaths = getArtifactsPaths(jobItem.buildWorkDir, jobItem.artifactsArchivePattern, '.git/**/*')
+
+    if (!artifactPaths.isEmpty()) {
+      println """
+Preparing artifacts archiving for job item ${jobItem.jobID}: 
+- pattern: ${jobItem.artifactsArchivePattern}
+- files found: ${artifactPaths}
+"""
+      artifactPaths.each { String filePath ->
+        String fileName = Paths.get(filePath).getFileName()
+        String archiveFilePath = allowAtomicScmCheckouts ? (jobItem.getScmLabel() + File.separator + fileName) : fileName
+
+        File targetFile = new File(artifactsTargetDir + archiveFilePath)
+        if (!targetFile.exists()) {
+          targetFile.getParentFile().mkdirs()
+          Files.copy(Paths.get(filePath), targetFile.toPath())
+        }
+      }
+
+    } else {
+      println "No artifacts found for job item ${jobItem.jobID} with pattern: ${jobItem.artifactsArchivePattern}"
+    }
+  }
+}
+
+def getArtifactsPaths(final String rootFolder, final String includesPattern, final String excludesPattern) {
+  List<String> artifactPaths = new FileNameFinder().getFileNames(rootFolder, includesPattern, excludesPattern)
+
+  artifactPaths?.unique { a, b -> a <=> b }
+
+  return artifactPaths
 }

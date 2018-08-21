@@ -24,6 +24,7 @@ package org.hitachivantara.ci.build
 
 import org.hitachivantara.ci.JobItem
 import org.hitachivantara.ci.build.impl.GradleBuilder
+import org.hitachivantara.ci.build.impl.JenkinsJobBuilder
 import org.hitachivantara.ci.build.impl.MavenBuilder
 import org.hitachivantara.ci.build.impl.AntBuilder
 
@@ -47,6 +48,9 @@ class BuilderFactory implements Serializable {
         break
       case JobItem.BuildFramework.GRADLE:
         builder = new GradleBuilder()
+        break
+      case JobItem.BuildFramework.JENKINS_JOB:
+        builder = new JenkinsJobBuilder()
         break
       default:
         throw new Exception("Sorry, I don't know how to handle the ${ji.buildFramework} type build framework.")

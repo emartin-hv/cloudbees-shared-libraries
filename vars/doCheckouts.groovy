@@ -37,7 +37,9 @@ def call(BuildData buildData) {
   println "Configured checkout chunk size: ${buildProperties.getInt(PARALLEL_CHECKOUT_CHUNKSIZE)}"
 
   // Collect all job items into a single list with distinct checkouts excluding noop
-  List jobItems = buildMap.collectMany { String key, List value -> value.findAll { JobItem ji -> !ji.execNoop } }
+  List jobItems = buildMap.collectMany {
+    String key, List value -> value.findAll { JobItem ji -> ji.doCheckout() }
+  }
   jobItems.unique { JobItem ji -> ji.scmLabel }
 
   // if no chunk value was specified don't split it
@@ -63,35 +65,34 @@ def call(BuildData buildData) {
 
         node(buildProperties[SLAVE_NODE_LABEL]) {
           dir(jobItem.checkoutDir) {
-            try {
+            utils.handleError({
               checkout(
-                  poll: doPolling,
-                  scm: [
-                      $class                           : 'GitSCM',
-                      branches                         : [[name: jobItem.scmBranch]],
-                      doGenerateSubmoduleConfigurations: false,
-                      extensions                       : [
-                          [$class: 'CheckoutOption', timeout: timeout],
-                          [$class: 'CloneOption', depth: depth, noTags: false, reference: '', shallow: true]
-                      ],
-                      submoduleCfg                     : [],
-                      userRemoteConfigs                : [[credentialsId: credentials, url: jobItem.scmUrl]]
-                  ]
+                poll: doPolling,
+                scm: [
+                  $class                           : 'GitSCM',
+                  branches                         : [[name: jobItem.scmBranch]],
+                  doGenerateSubmoduleConfigurations: false,
+                  extensions                       : [
+                    [$class: 'CheckoutOption', timeout: timeout],
+                    [$class: 'CloneOption', depth: depth, noTags: false, reference: '', shallow: true]
+                  ],
+                  submoduleCfg                     : [],
+                  userRemoteConfigs                : [[credentialsId: credentials, url: jobItem.scmUrl]]
+                ]
               )
-
               // TODO: not currently used
               if (useSourceCaching) {
                 stash(
-                    name: jobItem.scmLabel,
-                    allowEmpty: true,
-                    useDefaultExcludes: false,
-                    excludes: '**/dist, **/target, **/lib, **/lib-shared, **/lib-test, **/bin'
+                  name: jobItem.scmLabel,
+                  allowEmpty: true,
+                  useDefaultExcludes: false,
+                  excludes: '**/dist, **/target, **/lib, **/lib-shared, **/lib-test, **/bin'
                 )
               }
-            } catch (Throwable e) {
-              buildData.error(jobItem, e)
-              throw e
-            }
+            }, { Throwable err ->
+              buildData.error(jobItem, err)
+              throw err
+            })
           }
         }
       }]

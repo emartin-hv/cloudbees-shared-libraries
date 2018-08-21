@@ -26,58 +26,67 @@ import org.hitachivantara.ci.build.BuilderFactory
 import org.hitachivantara.ci.build.IBuilder
 import hudson.model.Result
 
-import static org.hitachivantara.ci.config.BuildData.*
+import static org.hitachivantara.ci.build.helper.BuilderUtils.organizeItems
+import static org.hitachivantara.ci.config.BuildData.IGNORE_PIPELINE_FAILURE
+import static org.hitachivantara.ci.config.BuildData.NOOP
+import static org.hitachivantara.ci.config.BuildData.SLAVE_NODE_LABEL
 
 def call(BuildData buildData) {
   Map buildProperties = buildData.buildProperties
   Map buildMap = buildData.buildMap
 
   if (buildProperties.getBool(NOOP)) {
-    println "NOOP: No builds performed."
+    log.info "NOOP: No builds performed."
     return
   }
 
   Boolean ignoreFailures = buildProperties.getBool(IGNORE_PIPELINE_FAILURE)
 
-  println "Running builds..."
+  log.info "Running builds..."
 
-  buildMap.each { String jobGroup, List jobItems ->
-    println "Running parallel job group [${jobGroup}]..."
+  buildMap.each { String jobGroup, List<JobItem> jobItems ->
+    log.info "Running parallel job group [${jobGroup}]..."
+    List buildableJobItems = jobItems.findAll { JobItem ji -> !ji.execNoop }
+
+    // no jobItems to build, leave
+    if (!buildableJobItems) {
+      log.info "No job items to build for this group."
+      return
+    }
 
     try {
-      List buildableJobItems = jobItems.findAll { JobItem ji -> !ji.execNoop }
-
-      // no jobItems to build, leave
-      if (!buildableJobItems){
-        println "No job items to build for this group."
-        return
-      }
-
-      Map entries = buildableJobItems.collectEntries { JobItem jobItem ->
+      List<List<?>> jobs = organizeItems(buildableJobItems.collect { JobItem jobItem ->
         IBuilder builder = BuilderFactory.getBuildManager(jobItem, [buildData: buildData, dsl: this])
+        return jobItem.parallel ? builder.expandWorkItem(jobItem) : jobItem
+      })
 
-        Closure buildExecution = builder.getBuildClosure(jobItem)
+      jobs.each { List<JobItem> workItems ->
+        Map entries = workItems.collectEntries { JobItem item ->
+          IBuilder builder = BuilderFactory.getBuildManager(item, [buildData: buildData, dsl: this])
 
-        [(jobItem.jobID): {
-          node(buildProperties[SLAVE_NODE_LABEL]) {
-            try {
-              buildExecution()
-            } catch (Throwable e) {
-              buildData.error(jobItem, e)
-              throw e
+          // SUPER IMPORTANT! Grab our build configurations before entering a node
+          Closure buildExecution = builder.getBuildClosure(item)
+
+          [(item.jobID): {
+            node(buildProperties[SLAVE_NODE_LABEL]) {
+              utils.handleError(
+                  buildExecution,
+                  { Throwable err ->
+                    buildData.error(item, err)
+                    throw err
+                  })
             }
-          }
-        }]
+          }]
+        }
+        entries.failFast = !ignoreFailures
+        parallel entries
       }
-
-      entries.failFast = !ignoreFailures
-      parallel entries
     } catch (Throwable e) {
-      println "Build has failed: ${e}"
       if (ignoreFailures) {
+        log.warn "Build is unstable: ${e}"
         currentBuild.result = Result.UNSTABLE
       } else {
-        throw e
+        error "Build has failed: ${e}"
       }
     }
   }

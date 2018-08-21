@@ -25,7 +25,7 @@ import static org.hitachivantara.ci.config.BuildData.*
 
 def call(BuildData buildData) {
   if (!buildData) {
-    println 'Empty Build Data. Cannot create reports.'
+    log.warn 'Empty Build Data. Cannot create reports.'
     return
   }
 
@@ -37,7 +37,7 @@ def call(BuildData buildData) {
     // Do reports
     reportToSlack(buildData.buildProperties, messageString)
   } catch (Throwable e) {
-    println "Could not generate report: ${e.message}"
+    log.warn "Could not generate report: ${e.message}"
   }
 }
 
@@ -60,9 +60,9 @@ String generateMessage(BuildData buildData){
     message << '\n'
     message << buildData.getErrorsString(10)
 
-    // logging the errors, can be help to quickly locate
+    // logging the errors, can help to quickly locate
     // the error origin when looking at the end of the log
-    println buildData.getErrorsString()
+    echo buildData.getErrorsString()
   }
 
   return message.toString()
@@ -73,7 +73,9 @@ void reportToSlack(Map buildProperties, String message) {
     Map colorMapping = [
         SUCCESS : 'good',
         UNSTABLE: 'warning',
-        FAILURE : 'danger'
+        FAILURE : 'danger',
+        NOT_BUILT: '#838282',
+        ABORTED: '#838282'
     ]
     String color = colorMapping[currentBuild.currentResult as String]
 

@@ -118,15 +118,38 @@ class MavenModule implements Serializable {
   }
 
   @NonCPS
-  static List<String> activeModules(MavenModule module, List<String> activeProfiles = null, Properties properties = null) {
+  static List<String> allActiveModules(MavenModule module, List<String> activeProfiles = null, Properties properties = null) {
     ModelBuildingResult buildingResult = buildModelResult(module.pom, activeProfiles, properties)
 
     return buildingResult.effectiveModel.modules.collectMany { String effectiveModule ->
-      MavenModule mavenModule = buildModule(new File(module.pom.parentFile,"$effectiveModule/pom.xml"))
-      List<String> modules = activeModules(mavenModule, activeProfiles, properties)
+      MavenModule mavenModule = buildModule(new File(module.pom.parentFile, "$effectiveModule/pom.xml"))
+      List<String> modules = allActiveModules(mavenModule, activeProfiles, properties)
 
       return [effectiveModule] + modules.collect { String inner -> "$effectiveModule/$inner".toString() }
     }
+  }
+
+  @NonCPS
+  static List<String> activeModules(MavenModule module, List<String> activeProfiles = null, Properties properties = null) {
+    ModelBuildingResult buildingResult = buildModelResult(module.pom, activeProfiles, properties)
+    return buildingResult.effectiveModel.modules
+  }
+
+  @NonCPS
+  static List<MavenModule> filterByProjectList(Set<MavenModule> modules, List<String> projectList) {
+    modules.findAll { MavenModule m ->
+      return projectList.contains(m.fullPath)
+    } as List
+  }
+
+  @NonCPS
+  static String sortProjectList(List<MavenModule> modules, MavenModule root) {
+    if (modules.contains(root)) return '' //skip, root will always trigger submodules
+
+    // sorting is to help test/debug only, there is no direct gain doing this
+    return modules.sort { MavenModule m -> m.depth }
+        .collect { MavenModule m -> root.pom.parentFile.toPath().relativize(m.pom.parentFile.toPath()).toString() }
+        .join(',')
   }
 
   @NonCPS

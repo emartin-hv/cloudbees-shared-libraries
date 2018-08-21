@@ -7,37 +7,13 @@
   <version>1.0</version>
   <packaging>pom</packaging>
 
-  <parent>
-    <groupId>org.pentaho</groupId>
-    <artifactId>pentaho-ce-jar-parent-pom</artifactId>
-    <version>9.0.0.0-SNAPSHOT</version>
-  </parent>
-
-  <profiles>
-    <profile>
-      <id>profile-A</id>
-      <activation>
-        <property>
-          <name>!skipDefault</name>
-        </property>
-      </activation>
-      <modules>
-        <module>sub-1</module>
-        <module>sub-2</module>
-      </modules>
-    </profile>
-    <profile>
-      <id>profile-B</id>
-      <activation>
-        <property>
-          <name>!skipDefault</name>
-        </property>
-      </activation>
-      <modules>
-        <module>sub-3</module>
-      </modules>
-    </profile>
-  </profiles>
+  <modules>
+    <module>sub-5</module>
+    <module>sub-3</module>
+    <module>sub-2</module>
+    <module>sub-4</module>
+    <module>sub-1</module>
+  </modules>
 
   <build>
     <plugins>
@@ -51,4 +27,5 @@
       </plugin>
     </plugins>
   </build>
+
 </project>

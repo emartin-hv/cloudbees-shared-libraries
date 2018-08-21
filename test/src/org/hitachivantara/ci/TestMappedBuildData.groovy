@@ -33,15 +33,14 @@ import static org.hitachivantara.ci.JobItem.ExecutionType.*
 import static org.hitachivantara.ci.JobItem.BuildFramework.*
 
 class TestMappedBuildData extends Specification {
-  @Shared Script script = new MockDslScript()
+  @Shared
+  Script script = new MockDslScript()
 
   def "test getting mapped data"() {
     when:
       BuildData mbd = new BuildDataBuilder(script)
           .withBuildData('test/resources/thinBuildDataTestFile.yaml')
-          .withEnvironment([
-              BUILDS_ROOT_PATH: 'builds'
-          ])
+          .withEnvironment([BUILDS_ROOT_PATH: 'builds'])
           .build()
 
       List allJobs = mbd.buildMap.collectMany { String jobGroup, List jobList -> jobList }
@@ -71,46 +70,56 @@ class TestMappedBuildData extends Specification {
       // not checking all jobs here as it would become too extensive, assuming a couple is enough
       JobItem jobItem1 = (mbd.buildMap['2'] as List<JobItem>)[0]
       jobItem1.jobData == [
-          jobID          : 'database-model',
-          jobGroup       : '2',
-          scmUrl         : 'https://github.com/pentaho/pentaho-commons-database.git',
-          scmBranch      : '8.0',
-          scmLabel       : 'pentaho.pentaho-commons-database~8.0',
-          buildFramework : MAVEN,
-          directives     : '+= -pl .,model',
-          settingsFile   : null,
-          testable       : true,
-          testsArchivePattern: '**/target/**/TEST*.xml',
-          buildFile      : null,
-          root           : '',
-          buildWorkDir   : 'builds/pentaho.pentaho-commons-database~8.0',
-          checkoutDir    : 'builds/pentaho.pentaho-commons-database~8.0',
-          versionProperty: null,
-          execType       : AUTO,
-          archivable    : true,
-          artifactsArchivePattern : null
+          jobID                  : 'database-model',
+          jobGroup               : '2',
+          scmUrl                 : 'https://github.com/pentaho/pentaho-commons-database.git',
+          scmBranch              : '8.0',
+          scmLabel               : 'pentaho.pentaho-commons-database~8.0',
+          buildFramework         : MAVEN,
+          directives             : '+= -pl .,model',
+          settingsFile           : null,
+          testable               : true,
+          testsArchivePattern    : '**/target/**/TEST*.xml',
+          buildFile              : null,
+          root                   : '',
+          buildWorkDir           : 'builds/pentaho.pentaho-commons-database~8.0',
+          checkoutDir            : 'builds/pentaho.pentaho-commons-database~8.0',
+          versionProperty        : null,
+          execType               : AUTO,
+          archivable             : true,
+          artifactsArchivePattern: null,
+          parallelize            : false,
+          asynchronous           : false,
+          passOnBuildParameters  : true,
+          properties             : null,
+          targetJobName          : null
       ]
 
       JobItem jobItem2 = (mbd.buildMap['2'] as List<JobItem>)[1]
       jobItem2.jobData == [
-          jobID          : 'versionchecker',
-          jobGroup       : '2',
-          scmUrl         : 'https://github.com/pentaho/pentaho-versionchecker.git',
-          scmBranch      : '8.0',
-          scmLabel       : 'pentaho.pentaho-versionchecker~8.0',
-          buildFramework : MAVEN,
-          directives     : null,
-          settingsFile   : null,
-          testable       : true,
-          testsArchivePattern: '**/target/**/TEST*.xml',
-          buildFile      : null,
-          root           : '',
-          buildWorkDir   : 'builds/pentaho.pentaho-versionchecker~8.0',
-          checkoutDir    : 'builds/pentaho.pentaho-versionchecker~8.0',
-          versionProperty: null,
-          execType       : AUTO,
-          archivable    : true,
-          artifactsArchivePattern : null
+          jobID                  : 'versionchecker',
+          jobGroup               : '2',
+          scmUrl                 : 'https://github.com/pentaho/pentaho-versionchecker.git',
+          scmBranch              : '8.0',
+          scmLabel               : 'pentaho.pentaho-versionchecker~8.0',
+          buildFramework         : MAVEN,
+          directives             : null,
+          settingsFile           : null,
+          testable               : true,
+          testsArchivePattern    : '**/target/**/TEST*.xml',
+          buildFile              : null,
+          root                   : '',
+          buildWorkDir           : 'builds/pentaho.pentaho-versionchecker~8.0',
+          checkoutDir            : 'builds/pentaho.pentaho-versionchecker~8.0',
+          versionProperty        : null,
+          execType               : AUTO,
+          archivable             : true,
+          artifactsArchivePattern: null,
+          parallelize            : false,
+          asynchronous           : false,
+          passOnBuildParameters  : true,
+          properties             : null,
+          targetJobName          : null
       ]
 
     and:
@@ -161,7 +170,7 @@ class TestMappedBuildData extends Specification {
 
       expected << [
           [(NOOP): ['parent-poms', 'database-model', 'versionchecker'], (AUTO): ['sparkl-plugin', 'cgg-plugin', 'data-refinery', 'pdi-plugins']],
-          [(FORCE): ['parent-poms'], (AUTO) : ['database-model', 'versionchecker', 'sparkl-plugin'], (NOOP) : ['cgg-plugin', 'data-refinery', 'pdi-plugins']],
+          [(FORCE): ['parent-poms'], (AUTO): ['database-model', 'versionchecker', 'sparkl-plugin'], (NOOP): ['cgg-plugin', 'data-refinery', 'pdi-plugins']],
           [(NOOP): ['parent-poms', 'cgg-plugin', 'data-refinery', 'pdi-plugins'], (AUTO): ['database-model', 'versionchecker', 'sparkl-plugin']]
       ]
   }
@@ -255,15 +264,15 @@ class TestMappedBuildData extends Specification {
 
     then:
       mbd.buildProperties == [
-        ANT_DEFAULT_DIRECTIVES      : 'clean-all resolve publish',
-        BUILD_PLAN_ID               : 'Atomic SCM checkouts Build Test',
-        DEFAULT_BRANCH              : 8.0,
-        GRADLE_DEFAULT_DIRECTIVES   : '-q',
-        MAVEN_DEFAULT_DIRECTIVES    : 'clean install',
-        ALLOW_ATOMIC_SCM_CHECKOUTS  : true,
-        PENTAHO_SCM_ROOT            : 'https://github.com/pentaho/',
-        SCM_HOST_ROOT               : 'https://github.com/',
-        WEBDETAILS_SCM_ROOT         : 'https://github.com/webdetails/'
+          ANT_DEFAULT_DIRECTIVES    : 'clean-all resolve publish',
+          BUILD_PLAN_ID             : 'Atomic SCM checkouts Build Test',
+          DEFAULT_BRANCH            : 8.0,
+          GRADLE_DEFAULT_DIRECTIVES : '-q',
+          MAVEN_DEFAULT_DIRECTIVES  : 'clean install',
+          ALLOW_ATOMIC_SCM_CHECKOUTS: true,
+          PENTAHO_SCM_ROOT          : 'https://github.com/pentaho/',
+          SCM_HOST_ROOT             : 'https://github.com/',
+          WEBDETAILS_SCM_ROOT       : 'https://github.com/webdetails/'
       ]
 
     and:
@@ -285,4 +294,45 @@ class TestMappedBuildData extends Specification {
       ]
 
   }
+
+  def "test override params with the OVERRIDE_PARAMS param"() {
+    when:
+      BuildData bd = new BuildDataBuilder(script)
+          .withEnvironment(
+            BUILD_DATA_ROOT_PATH: 'test/resources'
+          )
+          .withParams(
+            OVERRIDE_PARAMS:
+              '''
+              PARAM_TO_OVERRIDE: overriden
+              BUILD_DATA_FILE: 'overrideParamsBuildData.yaml'
+              JOB_ITEM_DEFAULTS :
+                scmBranch: dev  
+              ''',
+            BUILD_DATA_FILE: 'fakeBuildData.yaml'
+          )
+          .build()
+
+    then:
+      noExceptionThrown()
+
+    and:
+      bd.buildProperties == [
+          BUILD_PLAN_ID: 'Test param overrides',
+          BUILD_DATA_FILE: 'overrideParamsBuildData.yaml',
+          JOB_ITEM_DEFAULTS: [
+              buildFramework: 'ANT',
+              scmBranch: 'dev'
+          ],
+          OVERRIDE_PARAMS:
+              '''
+              PARAM_TO_OVERRIDE: overriden
+              BUILD_DATA_FILE: 'overrideParamsBuildData.yaml'
+              JOB_ITEM_DEFAULTS :
+                scmBranch: dev  
+              ''',
+          PARAM_TO_OVERRIDE: 'overriden'
+      ]
+  }
+
 }

@@ -60,44 +60,40 @@ def call(BuildData buildData) {
 
   try {
     buildMap.each { String jobGroup, List jobItems ->
+      // filter out non archivable and noop
+      List archivableJobItems = jobItems.findAll { JobItem ji -> !ji.execNoop && ji.archivable }
 
-      try {
-        // filter out non archivable and noop
-        List archivableJobItems = jobItems.findAll { JobItem ji -> !ji.execNoop && ji.archivable }
+      // no jobItems to archive, leave
+      if (!archivableJobItems) {
+        println "No archivable job items for this group."
+        return
+      }
 
-        // no jobItems to archive, leave
-        if (!archivableJobItems) {
-          println "No archivable job items for this group."
-          return
-        }
+      Map entries = archivableJobItems.collectEntries { JobItem jobItem ->
 
-        Map entries = archivableJobItems.collectEntries { JobItem jobItem ->
-
-          Closure archiveArtifacts = copyToFolderAvailable ?
+        Closure archiveArtifacts = copyToFolderAvailable ?
             archiveArtifactsByCopy(jobItem, buildProperties.getBool(ALLOW_ATOMIC_SCM_CHECKOUTS)) : archiveArtifactsByPlugin(jobItem)
 
-          [(jobItem.jobID): {
-            node(buildProperties[SLAVE_NODE_LABEL]) {
-              try {
-                archiveArtifacts()
-
-              } catch (Throwable e) {
-                buildData.error(jobItem, e)
-                throw e
-              }
-            }
-          }]
-        }
-        entries.failFast = !ignoreFailures
-        parallel entries
-      } catch (Throwable e) {
-        println "Artifact archiving has failed: ${e}"
-        if (ignoreFailures) {
-          currentBuild.result = Result.UNSTABLE
-        } else {
-          throw e
-        }
+        [(jobItem.jobID): {
+          node(buildProperties[SLAVE_NODE_LABEL]) {
+            utils.handleError(
+                archiveArtifacts,
+                { Throwable e ->
+                  buildData.error(jobItem, e)
+                  throw e
+                })
+          }
+        }]
       }
+      entries.failFast = !ignoreFailures
+      parallel entries
+    }
+  } catch (Throwable e) {
+    println "Artifact archiving has failed: ${e}"
+    if (ignoreFailures) {
+      currentBuild.result = Result.UNSTABLE
+    } else {
+      throw e
     }
   } finally {
     Date endDt = new Date()
@@ -115,7 +111,7 @@ Closure archiveArtifactsByPlugin(JobItem jobItem) {
     dir(jobItem.buildWorkDir) {
       archiveArtifacts(
         artifacts: jobItem.artifactsArchivePattern,
-        excludes: '.git/**/*',
+        excludes: '.git/**/*, **/*-sources.jar',
         allowEmptyArchive: true,
         fingerprint: false
       )
@@ -129,11 +125,11 @@ Closure archiveArtifactsByCopy(JobItem jobItem, Boolean allowAtomicScmCheckouts)
   artifactsTargetDir = artifactsTargetDir + File.separator
 
   return { ->
-    List<String> artifactPaths = getArtifactsPaths(jobItem.buildWorkDir, jobItem.artifactsArchivePattern, '.git/**/*')
+    List<String> artifactPaths = getArtifactsPaths(jobItem.buildWorkDir, jobItem.artifactsArchivePattern, '.git/**/*, **/*-sources.jar')
 
     if (!artifactPaths.isEmpty()) {
       println """
-Preparing artifacts archiving for job item ${jobItem.jobID}: 
+Preparing artifacts archiving for job item ${jobItem.jobID}:
 - pattern: ${jobItem.artifactsArchivePattern}
 - files found: ${artifactPaths}
 """
@@ -156,8 +152,5 @@ Preparing artifacts archiving for job item ${jobItem.jobID}:
 
 def getArtifactsPaths(final String rootFolder, final String includesPattern, final String excludesPattern) {
   List<String> artifactPaths = new FileNameFinder().getFileNames(rootFolder, includesPattern, excludesPattern)
-
-  artifactPaths?.unique { a, b -> a <=> b }
-
-  return artifactPaths
+  return artifactPaths?.unique()
 }

@@ -99,6 +99,11 @@ class AntBuilder implements IBuilder {
     return getAntDsl(jobItem, antCmd.toString())
   }
 
+  List<List<JobItem>> expandWorkItem(JobItem jobItem) {
+    dsl.log.warn "Expanding jobItem not implemented for Ant, reverting to normal"
+    [[jobItem]]
+  }
+
   private Closure getAntDsl(JobItem jobItem, String antCmd) {
     Map buildProperties = buildData.getBuildProperties()
 
@@ -109,7 +114,7 @@ class AntBuilder implements IBuilder {
               installation: "${buildProperties[JENKINS_ANT_FOR_BUILDS]}",
               jdk: "${buildProperties[JENKINS_JDK_FOR_BUILDS]}",
           ) {
-            dsl.sh "${antCmd}"
+            BuilderUtils.process(antCmd, dsl)
           }
         }
       }

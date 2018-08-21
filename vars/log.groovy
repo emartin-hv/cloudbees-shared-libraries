@@ -20,13 +20,18 @@
  * explicitly covering such access.
  */
 
-package org.hitachivantara.ci.build
+def error(msg) {
+  echo "[ERROR] $msg"
+}
 
-import org.hitachivantara.ci.JobItem
+def warn(msg) {
+  echo "[WARNING] $msg"
+}
 
-interface IBuilder {
-  void setBuilderData(Map builderData)
-  Closure getBuildClosure(JobItem jobItem)
-  Closure getTestClosure(JobItem jobItem)
-  List<List<JobItem>> expandWorkItem(JobItem jobItem)
+def info(msg) {
+  echo "[INFO] $msg"
+}
+
+def debug(msg) {
+  echo "[DEBUG] $msg"
 }

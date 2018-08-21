@@ -48,18 +48,19 @@ class TestConfiguration extends Specification {
           WEBDETAILS_SCM_ROOT      : 'https://github.com/webdetails',
           ARCHIVE_TESTS_PATTERN    : '**/bin/**/TEST*.xml, **/target/**/TEST*.xml, **/build/**/*Test.xml',
           JOB_ITEM_DEFAULTS        : [
-              scmUrl         : null,
-              scmBranch      : '${DEFAULT_BRANCH}',
-              buildFramework : 'MAVEN',
-              buildFile      : 'pom.xml',
-              directives     : '${MAVEN_DEFAULT_DIRECTIVES}',
-              root           : '.',
-              testable       : true,
-              testsArchivePattern: '${ARCHIVE_TESTS_PATTERN}',
-              versionProperty: null,
-              execType       : 'AUTO',
-              archivable    : true,
-              artifactsArchivePattern : '${ARCHIVE_ARTIFACTS_PATTERN}'
+              scmUrl                 : null,
+              scmBranch              : '${DEFAULT_BRANCH}',
+              buildFramework         : 'MAVEN',
+              buildFile              : 'pom.xml',
+              directives             : '${MAVEN_DEFAULT_DIRECTIVES}',
+              root                   : '.',
+              testable               : true,
+              testsArchivePattern    : '${ARCHIVE_TESTS_PATTERN}',
+              versionProperty        : null,
+              execType               : 'AUTO',
+              archivable             : true,
+              artifactsArchivePattern: '${ARCHIVE_ARTIFACTS_PATTERN}',
+              parallelize            : false
           ]
       ]
 
@@ -84,25 +85,29 @@ class TestConfiguration extends Specification {
     and:
       JobItem jobItem1 = mbd.buildMap['20'][0]
       jobItem1.jobData == [
-        buildFile          : 'pom.xml',
-        settingsFile       : null,
-        buildFramework     : MAVEN,
-        buildWorkDir       : 'builds/pentaho.pentaho-ee~8.0/data-integration/plugins',
-        checkoutDir        : 'builds/pentaho.pentaho-ee~8.0',
-        directives         : 'clean install',
-        execType           : AUTO,
-        jobGroup           : '20',
-        jobID              : 'pdi-plugins',
-        root               : 'data-integration/plugins',
-        scmBranch          : '8.0',
-        scmLabel           : 'pentaho.pentaho-ee~8.0',
-        scmUrl             : 'https://github.com/pentaho/pentaho-ee.git',
-        testable           : false,
-        testsArchivePattern: '**/bin/**/TEST*.xml, **/target/**/TEST*.xml, **/build/**/*Test.xml',
-        versionProperty    : null,
-        artifactsArchivePattern     : '**/dist/*.gz, **/dist/*.zip, **/target/*.gz, **/target/*.zip, **/build/**/*.gz, **/build/**/*.zip, **/build/*.zip',
-        archivable         : true
-
+          buildFile              : 'pom.xml',
+          settingsFile           : null,
+          buildFramework         : MAVEN,
+          buildWorkDir           : 'builds/pentaho.pentaho-ee~8.0/data-integration/plugins',
+          checkoutDir            : 'builds/pentaho.pentaho-ee~8.0',
+          directives             : 'clean install',
+          execType               : AUTO,
+          jobGroup               : '20',
+          jobID                  : 'pdi-plugins',
+          root                   : 'data-integration/plugins',
+          scmBranch              : '8.0',
+          scmLabel               : 'pentaho.pentaho-ee~8.0',
+          scmUrl                 : 'https://github.com/pentaho/pentaho-ee.git',
+          testable               : false,
+          testsArchivePattern    : '**/bin/**/TEST*.xml, **/target/**/TEST*.xml, **/build/**/*Test.xml',
+          versionProperty        : null,
+          artifactsArchivePattern: '**/dist/*.gz, **/dist/*.zip, **/target/*.gz, **/target/*.zip, **/build/**/*.gz, **/build/**/*.zip, **/build/*.zip',
+          archivable             : true,
+          parallelize            : false,
+          asynchronous           : false,
+          passOnBuildParameters  : true,
+          properties             : null,
+          targetJobName          : null
       ]
 
   }

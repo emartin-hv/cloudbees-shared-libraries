@@ -29,3 +29,4 @@ JOB_ITEM_DEFAULTS:
   execType: AUTO
   artifactsArchivePattern: ${ARCHIVE_ARTIFACTS_PATTERN}
   archivable: true
+  parallelize: false

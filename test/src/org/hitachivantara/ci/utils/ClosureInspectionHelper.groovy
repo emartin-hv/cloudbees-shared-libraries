@@ -22,17 +22,22 @@
 
 package org.hitachivantara.ci.utils
 
-class ClosureInspectionHelper {
+class ClosureInspectionHelper extends Script {
   def str = ""<<""
   def i = 0
   def cmds = []
   def workdir = []
   def delegate
 
-  void sh(cmd) {
-    cmds << cmd
+  def sh(cmd) {
+    if (cmd instanceof Map) {
+      cmds << cmd.script
+    } else {
+      cmds << cmd
+    }
     str << ' '*(i*2)
     str << "sh $cmd" << '\n'
+    return 0
   }
 
   void dir(cmd, args) {
@@ -76,7 +81,22 @@ class ClosureInspectionHelper {
     return
   }
 
+  def build(Map values) {
+    str << ' '*(i*2)
+    str << 'build('
+    str << " job: ${values['job']},"
+    str << " wait: ${values['wait']},"
+    str << " parameters: ${values['parameters']}"
+    str << ')'
+
+    cmds << str.toString()
+
+    return
+  }
+
   String toString() {
     str
   }
+
+  Object run() { }
 }

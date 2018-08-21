@@ -23,20 +23,42 @@
 package org.hitachivantara.ci.build.impl
 
 import com.cloudbees.groovy.cps.NonCPS
-import hudson.model.Run
-import hudson.scm.ChangeLogSet
 import org.apache.commons.cli.CommandLine
 import org.apache.commons.cli.Option
 import org.apache.maven.cli.CLIManager
 import org.hitachivantara.ci.JobItem
 import org.hitachivantara.ci.build.IBuilder
-import org.hitachivantara.ci.build.helper.BuilderUtils
+import org.hitachivantara.ci.build.tools.maven.FilteredProjectDependencyGraph
 import org.hitachivantara.ci.build.tools.maven.MavenModule
 import org.hitachivantara.ci.config.BuildData
 
 import java.nio.file.Path
 
-import static org.hitachivantara.ci.config.BuildData.*
+import static org.hitachivantara.ci.build.helper.BuilderUtils.applyBuildDirectives
+import static org.hitachivantara.ci.build.helper.BuilderUtils.canBeSkipped
+import static org.hitachivantara.ci.build.helper.BuilderUtils.findBuildFile
+import static org.hitachivantara.ci.build.helper.BuilderUtils.forceRemainingJobItems
+import static org.hitachivantara.ci.build.helper.BuilderUtils.getChangeSet
+import static org.hitachivantara.ci.build.helper.BuilderUtils.getRelativePath
+import static org.hitachivantara.ci.build.helper.BuilderUtils.intersect
+import static org.hitachivantara.ci.build.helper.BuilderUtils.process
+
+import static org.hitachivantara.ci.build.tools.maven.MavenModule.filterByProjectList
+import static org.hitachivantara.ci.build.tools.maven.MavenModule.sortProjectList
+
+import static org.hitachivantara.ci.config.BuildData.JENKINS_JDK_FOR_BUILDS
+import static org.hitachivantara.ci.config.BuildData.JENKINS_MAVEN_FOR_BUILDS
+import static org.hitachivantara.ci.config.BuildData.LIB_CACHE_ROOT_PATH
+import static org.hitachivantara.ci.config.BuildData.MAVEN_DEFAULT_COMMAND_OPTIONS
+import static org.hitachivantara.ci.config.BuildData.MAVEN_DEFAULT_DIRECTIVES
+import static org.hitachivantara.ci.config.BuildData.MAVEN_OPTS
+import static org.hitachivantara.ci.config.BuildData.MAVEN_RESOLVE_REPO_URL
+import static org.hitachivantara.ci.config.BuildData.MAVEN_PUBLIC_RELEASE_REPO_URL
+import static org.hitachivantara.ci.config.BuildData.MAVEN_PUBLIC_SNAPSHOT_REPO_URL
+import static org.hitachivantara.ci.config.BuildData.MAVEN_PRIVATE_RELEASE_REPO_URL
+import static org.hitachivantara.ci.config.BuildData.MAVEN_PRIVATE_SNAPSHOT_REPO_URL
+import static org.hitachivantara.ci.config.BuildData.MAVEN_TEST_OPTS
+import static org.hitachivantara.ci.config.BuildData.WORKSPACE
 
 /*
 NOTE: NonCPS annotated methods cannot call CPS transformed code!
@@ -49,62 +71,46 @@ class MavenBuilder implements IBuilder, Serializable {
 
   private BuildData buildData
   private Script dsl
+  private Map buildProperties
 
   @Override
   void setBuilderData(Map builderData) {
     this.buildData = builderData['buildData']
     this.dsl = builderData['dsl']
+    this.buildProperties = buildData.getBuildProperties()
   }
 
   Closure getBuildClosure(JobItem jobItem) {
-    Closure skip = canBeSkipped(jobItem)
+    Closure skip = canBeSkipped(jobItem, buildData, dsl)
     if (skip) return skip
 
-    Map buildProperties = buildData.getBuildProperties()
-
-    CommandBuilder command = new CommandBuilder()
-    command += buildProperties[MAVEN_DEFAULT_COMMAND_OPTIONS]
-    if (jobItem.buildFile) {
-      command += "-f ${jobItem.buildFile}"
-    }
+    CommandBuilder command = getCommandBuilder(jobItem)
     command += '-DskipTests'
-    // This is for using Takari Concurrent Local Repository which uses aether so to avoid the occasional .part file
-    // 'resume' (see: https://github.com/takari/takari-local-repository/issues/4) issue we send this:
-    command += '-Daether.connector.resumeDownloads=false'
-    BuilderUtils.applyBuildDirectives(command, buildProperties[MAVEN_DEFAULT_DIRECTIVES] as String, jobItem.directives)
+    applyBuildDirectives(command, buildProperties[MAVEN_DEFAULT_DIRECTIVES] as String, jobItem.directives)
 
     if (jobItem.isExecAuto()) {
       if (!changeProjectList(command, jobItem)) {
         // in case that the change detection has confirmed that changes doesn't belong to this job item
-        return { -> dsl.echo "${jobItem.jobID}: skipped ${jobItem.scmLabel} (no changes)" }
+        return { -> dsl.log.info "${jobItem.jobID}: skipped ${jobItem.scmLabel} (no changes)" }
       }
       // change the remaining groups to FORCE
       // TODO: use some kind of dependency graph to change only the affected downstreams
-      BuilderUtils.forceRemainingJobItems(jobItem, buildData.buildMap)
+      forceRemainingJobItems(jobItem, buildData.buildMap)
     }
 
     String mvnCommand = command.build()
-    dsl.echo "Maven build directives for ${jobItem.getJobID()}: $mvnCommand"
+    dsl.log.info "Maven build directives for ${jobItem.getJobID()}: $mvnCommand"
     return getMvnDsl(jobItem, mvnCommand)
   }
 
   Closure getTestClosure(JobItem jobItem) {
-    def skip = canBeSkipped(jobItem, true)
+    def skip = canBeSkipped(jobItem, buildData, dsl, true)
     if (skip) return skip
 
-    Map buildProperties = buildData.getBuildProperties()
-
-    CommandBuilder command = new CommandBuilder()
+    CommandBuilder command = getCommandBuilder(jobItem)
     command += 'test'
-    command += buildProperties[MAVEN_DEFAULT_COMMAND_OPTIONS]
-    if (jobItem.buildFile) {
-      command += "-f ${jobItem.buildFile}"
-    }
     command += buildProperties[MAVEN_TEST_OPTS]
-    // This is for using Takari Concurrent Local Repository which uses aether so to avoid the occasional .part file
-    // 'resume' (see: https://github.com/takari/takari-local-repository/issues/4) issue we send this:
-    command += '-Daether.connector.resumeDownloads=false'
-    BuilderUtils.applyBuildDirectives(command, buildProperties[MAVEN_DEFAULT_DIRECTIVES] as String, jobItem.directives)
+    applyBuildDirectives(command, buildProperties[MAVEN_DEFAULT_DIRECTIVES] as String, jobItem.directives)
 
     // list of goals that we want stripped from the final command
     command -= ['clean', 'validate', 'compile', 'verify', 'package', 'install', 'deploy', '-Dmaven.test.skip'].join(' ')
@@ -112,58 +118,112 @@ class MavenBuilder implements IBuilder, Serializable {
     if (jobItem.isExecAuto()) {
       if (!changeProjectList(command, jobItem)) {
         // in case that the change detection has confirmed that changes doesn't belong to this job item
-        return { -> dsl.echo "${jobItem.jobID}: skipped ${jobItem.scmLabel} (no changes)" }
+        return { -> dsl.log.info "${jobItem.jobID}: skipped ${jobItem.scmLabel} (no changes)" }
       }
     }
 
     String mvnCommand = command.build()
-    dsl.echo "Maven unit test build directives for ${jobItem.jobID}: ${mvnCommand} (testable=${jobItem.testable})"
+    dsl.log.info "Maven unit test build directives for ${jobItem.jobID}: ${mvnCommand} (testable=${jobItem.testable})"
     return getMvnDsl(jobItem, mvnCommand)
   }
 
-  private Closure getMvnDsl(JobItem jobItem, String cmd) {
-    Map buildProperties = buildData.getBuildProperties()
+  List<List<JobItem>> expandWorkItem(JobItem jobItem) {
+    CommandBuilder command = getCommandBuilder(jobItem)
+    applyBuildDirectives(command, buildProperties[MAVEN_DEFAULT_DIRECTIVES] as String, jobItem.directives)
 
+    jobItem.setAffectedPath(jobItem.buildWorkDir)
+
+    Properties properties = command.getUserProperties()
+    List<String> activeProfiles = command.getActiveProfileIds()
+    List<String> projectList = command.getProjectList()
+
+    File repo = new File(jobItem.buildWorkDir)
+    File rootPom = new File(repo, jobItem.buildFile ?: 'pom.xml')
+    MavenModule rootModule = MavenModule.buildModule(rootPom)
+
+    FilteredProjectDependencyGraph filteredProjectDependencyGraph =
+        new FilteredProjectDependencyGraph(rootModule, activeProfiles, properties, projectList)
+
+    List<List<String>> activeModules = filteredProjectDependencyGraph.sortedProjectsByGroups
+
+    if (!activeModules) {
+      // we are a leaf, nothing to expand
+      return [[jobItem]]
+    }
+
+    String directives = command.getGoals().join(' ')
+
+    List<List<JobItem>> result = activeModules.collect { List<String> modules ->
+      return modules.collect { String module ->
+        // module is of type root,root/sub1,root/sub...
+        int i = module.indexOf(',')
+        String root = module[0..(i > 0 ? --i : i)]
+        command.removeOption('-pl')
+        command << "-pl ${module}"
+
+        Map newJobData = [
+            jobID      : "${jobItem.jobID}/${root}",
+            directives : "${directives} ${command.getOptions().join(' ')}",
+            parallelize: false
+        ]
+
+        JobItem innerJobItem = jobItem.clone()
+        innerJobItem.setJobData(newJobData)
+        // this extra steps are needed so wen archiving results, we only get this module once
+        String parent = new File(innerJobItem.buildFile ?: '').getParent()
+        innerJobItem.setAffectedPath(new File(jobItem.affectedPath + "/${parent ?: ''}/${root}").path)
+        return innerJobItem
+      }
+    }
+    return result
+  }
+
+  private CommandBuilder getCommandBuilder(JobItem jobItem) {
+    CommandBuilder command = new CommandBuilder()
+    command += buildProperties[MAVEN_DEFAULT_COMMAND_OPTIONS]
+
+    if (jobItem.buildFile) command += "-f ${jobItem.buildFile}"
+
+    // This is for using Takari Concurrent Local Repository which uses aether so to avoid the occasional .part file
+    // 'resume' (see: https://github.com/takari/takari-local-repository/issues/4) issue we send this:
+    command += '-Daether.connector.resumeDownloads=false'
+
+    return command
+  }
+
+  private Closure getMvnDsl(JobItem jobItem, String cmd) {
     String mavenSettingsFile = "${buildProperties.getString(WORKSPACE)}/resources/config/jenkins-pipeline-settings1.xml"
     String globalMavenSettingsFile = "${buildProperties.getString(WORKSPACE)}/resources/config/jenkins-pipeline-settings1.xml"
     String cacheRoot = buildProperties.getString(LIB_CACHE_ROOT_PATH)
     String mavenLocalRepoPath = cacheRoot == null ? "${buildProperties.getString(WORKSPACE)}/caches/.m2/repository" : "${cacheRoot}/.m2/repository"
+    String mavenRepoMirror = buildProperties.getString(MAVEN_RESOLVE_REPO_URL)
+    String mavenPublicReleaseRepo = buildProperties.getString(MAVEN_PUBLIC_RELEASE_REPO_URL)
+    String mavenPublicSnapshotRepo = buildProperties.getString(MAVEN_PUBLIC_SNAPSHOT_REPO_URL)
+    String mavenPrivateReleaseRepo = buildProperties.getString(MAVEN_PRIVATE_RELEASE_REPO_URL)
+    String mavenPrivateSnapshotRepo = buildProperties.getString(MAVEN_PRIVATE_SNAPSHOT_REPO_URL)
+    String jdk = buildProperties.getString(JENKINS_JDK_FOR_BUILDS)
+    String mavenTool = buildProperties.getString(JENKINS_MAVEN_FOR_BUILDS)
+    String mavenOPTS = buildProperties.getString(MAVEN_OPTS)
 
     return { ->
       dsl.dir(jobItem.buildWorkDir) {
-        dsl.withEnv(["RESOLVE_REPO_MIRROR=${buildProperties.MAVEN_RESOLVE_REPO_URL}"]) {
+        dsl.withEnv(["RESOLVE_REPO_MIRROR=${mavenRepoMirror}", "PUBLIC_RELEASE_REPO_URL=${mavenPublicReleaseRepo}",
+                     "PUBLIC_SNAPSHOT_REPO_URL=${mavenPublicSnapshotRepo}", "PRIVATE_RELEASE_REPO_URL=${mavenPrivateReleaseRepo}",
+                     "PRIVATE_SNAPSHOT_REPO_URL=${mavenPrivateSnapshotRepo}"]) {
           dsl.withMaven(
               mavenSettingsFilePath: mavenSettingsFile,
               globalMavenSettingsFilePath: globalMavenSettingsFile,
-              jdk: buildProperties.getString(JENKINS_JDK_FOR_BUILDS),
-              maven: buildProperties.getString(JENKINS_MAVEN_FOR_BUILDS),
+              jdk: jdk,
+              maven: mavenTool,
               mavenLocalRepo: mavenLocalRepoPath,
-              mavenOpts: buildProperties.getString(MAVEN_OPTS),
+              mavenOpts: mavenOPTS,
               publisherStrategy: 'EXPLICIT') {
             // And here's the build command!
-            dsl.sh cmd
+            process(cmd, dsl)
           }
         }
       }
     }
-  }
-
-  /**
-   * if this job can be skipped
-   * @param jobItem
-   * @return Closure that does nothing, null otherwise
-   */
-  Closure canBeSkipped(JobItem jobItem, boolean testPhase = false) {
-    if (buildData.noop || jobItem.isExecNoop()) {
-      return { -> dsl.echo "${jobItem.jobID}: NOOP so not building ${jobItem.scmLabel}" }
-    }
-    if (testPhase && !jobItem.testable) {
-      return { -> dsl.echo "${jobItem.jobID}: skipped ${jobItem.scmLabel} (not testable)" }
-    }
-    if (jobItem.isExecAuto() && changeSet?.empty) {
-      return { -> dsl.echo "${jobItem.jobID}: skipped ${jobItem.scmLabel} (no changes)" }
-    }
-    return null
   }
 
   /**
@@ -174,7 +234,7 @@ class MavenBuilder implements IBuilder, Serializable {
    * @return true if the command can be evaluated, false otherwise
    */
   boolean changeProjectList(CommandBuilder command, JobItem jobItem) {
-    List<String> changes = getChangeSet()
+    List<String> changes = getChangeSet(dsl)
     if (!changes) {
       // if changes is null, then this is the first build or there are no previous successful builds, return true to trigger a new build
       // if changes is an empty list, that means nothing changed, return false to skip this build
@@ -195,13 +255,13 @@ class MavenBuilder implements IBuilder, Serializable {
     File repo = new File(jobItem.buildWorkDir)
     File rootPom = new File(repo, jobItem.buildFile ?: 'pom.xml')
     MavenModule rootModule = MavenModule.buildModule(rootPom)
-    List<String> activeModules = MavenModule.activeModules(rootModule, activeProfiles, properties)
+    List<String> activeModules = MavenModule.allActiveModules(rootModule, activeProfiles, properties)
     if (rootModule.fullPath != '.') {
       activeModules = activeModules.collect { String m -> "${rootModule.fullPath}/$m".toString() }
       activeModules << rootModule.fullPath
     }
 
-    Set<MavenModule> modules = []
+    Set<MavenModule> changedModules = []
     for (String changedFile in changes) {
       File workspace = new File(jobItem.checkoutDir)
       Path workDir = new File(jobItem.buildWorkDir).toPath()
@@ -209,16 +269,16 @@ class MavenBuilder implements IBuilder, Serializable {
 
       if (jobItem.root && !file.toPath().startsWith(workDir)) continue
 
-      File pom = BuilderUtils.findBuildFile(repo, file, 'pom.xml')
+      File pom = findBuildFile(repo, file, 'pom.xml')
       if (pom) {
-        modules << MavenModule.buildModule(pom)
+        changedModules << MavenModule.buildModule(pom)
       }
     }
 
     if (!activeModules) {
       // we are at a leaf module, check if it intersects with the change set
-      if (modules.contains(rootModule)) {
-        command << "-f ${BuilderUtils.getRelativePath(rootModule.pom.canonicalPath, repo.canonicalPath)}"
+      if (changedModules.contains(rootModule)) {
+        command << "-f ${getRelativePath(rootModule.pom.canonicalPath, repo.canonicalPath)}"
         command << '-amd'
         return true
       }
@@ -226,9 +286,9 @@ class MavenBuilder implements IBuilder, Serializable {
       activeModules = intersect(activeModules, projectList)
 
       // grab the list of changed modules, and filter only the active ones
-      List<MavenModule> filteredModules = filterByActiveModules(modules, activeModules)
+      List<MavenModule> filteredModules = filterByProjectList(changedModules, activeModules)
       if (filteredModules) {
-        command << "-f ${BuilderUtils.getRelativePath(rootModule.pom.canonicalPath, repo.canonicalPath)}"
+        command << "-f ${getRelativePath(rootModule.pom.canonicalPath, repo.canonicalPath)}"
         String list = sortProjectList(filteredModules, rootModule)
         if (list) {
           command << "-pl '${list}'"
@@ -238,57 +298,6 @@ class MavenBuilder implements IBuilder, Serializable {
       }
     }
     return false
-  }
-
-  @NonCPS
-  private <T> List<T> intersect(List<T> listA, List<T> listB) {
-    if (listB) {
-      return listA.intersect(listB)
-    }
-    return listA
-  }
-
-  @NonCPS
-  private List<MavenModule> filterByActiveModules(Set<MavenModule> modules, List<String> activeModules) {
-    modules.findAll { MavenModule m ->
-      return activeModules.contains(m.fullPath)
-    } as List
-  }
-
-  @NonCPS
-  private String sortProjectList(List<MavenModule> modules, MavenModule root) {
-    if (modules.contains(root)) return '' //skip, root will always trigger submodules
-
-    // sorting is to help test/debug only, there is no direct gain doing this
-    return modules.sort { MavenModule m -> m.depth }
-      .collect { MavenModule m -> root.pom.parentFile.toPath().relativize(m.pom.parentFile.toPath()).toString() }
-      .join(',')
-  }
-
-  /**
-   * if previous success is null, then this is the first build or there are no previous successful builds, return null to trigger a new build
-   * if changes is an empty list, that means nothing changed, return empty list to skip this build
-   *
-   * @return null if no successful builds, list otherwise
-   */
-  @NonCPS
-  List<String> getChangeSet() {
-    // find the latest successful build and get the change list
-    List<String> changeSet = []
-    def build = dsl.currentBuild.rawBuild
-    Run r = build.previousSuccessfulBuild
-
-    if (!r) return null
-
-    while (build?.number > r.number) {
-      build.changeSets.each { ChangeLogSet log ->
-        log.items.each { ChangeLogSet.Entry entry ->
-          changeSet += entry.affectedPaths
-        }
-      }
-      build = build.previousBuild
-    }
-    return changeSet
   }
 
   static class CommandBuilder {
@@ -357,14 +366,14 @@ class MavenBuilder implements IBuilder, Serializable {
     @NonCPS
     List<String> getProjectList() {
       getOptionsValues(CLIManager.PROJECT_LIST)
-        .collectMany { it.split(',').toList() }
+          .collectMany { it.split(',').toList() }
     }
 
     @NonCPS
     List<String> getActiveProfileIds() {
       getOptionsValues(CLIManager.ACTIVATE_PROFILES)
-        .findAll { it.indexOf('!') < 0 }
-        .collectMany { it.split(',').toList() }
+          .findAll { it.indexOf('!') < 0 }
+          .collectMany { it.split(',').toList() }
     }
 
     @NonCPS

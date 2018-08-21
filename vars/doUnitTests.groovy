@@ -33,17 +33,22 @@ def call(BuildData buildData) {
   Map buildMap = buildData.buildMap
 
   if (buildProperties.getBool(NOOP)) {
-    println "NOOP: No tests will be ran."
+    log.info "NOOP: No tests will be ran."
     return
   }
 
   Boolean ignoreFailures = buildProperties.getBool(IGNORE_PIPELINE_FAILURE)
 
-  println "Running unit tests..."
-  println "Configured test chunk size: ${buildProperties[PARALLEL_UNIT_TESTS_CHUNKSIZE]}"
+  log.info "Running unit tests..."
+  log.info "Configured test chunk size: ${buildProperties[PARALLEL_UNIT_TESTS_CHUNKSIZE]}"
 
-  // Collect all job items into a single list without noop items
-  List jobItems = buildMap.collectMany { String key, List value -> value.findAll { JobItem ji -> !ji.execNoop } }
+  // Collect all job items into a single list without noop or untestable items
+  List<JobItem> jobItems = buildMap
+      .collectMany { String key, List<JobItem> value -> value.findAll { JobItem ji -> !ji.execNoop && ji.testable } }
+      .collect { JobItem jobItem ->
+    IBuilder builder = BuilderFactory.getBuildManager(jobItem, [buildData: buildData, dsl: this])
+    return jobItem.parallel ? builder.expandWorkItem(jobItem) : jobItem
+  }.flatten()
 
   // if no chunk value was specified don't split it
   int chunkSize = buildProperties.getInt(PARALLEL_UNIT_TESTS_CHUNKSIZE) ?: jobItems.size()
@@ -58,33 +63,31 @@ def call(BuildData buildData) {
 
         [(jobItem.jobID): {
           node(buildProperties[SLAVE_NODE_LABEL]) {
-            try {
-              testExecution()
-              if (jobItem.testable) {
-                println "Archiving tests for job item ${jobItem.jobID} with pattern ${jobItem.testsArchivePattern}"
-                dir(jobItem.buildWorkDir) {
-                  junit allowEmptyResults: true, testResults: jobItem.testsArchivePattern
-                }
-              }
-            } catch (Throwable e) {
-              buildData.error(jobItem, e)
-              throw e
-            }
+            utils.handleError(
+                testExecution,
+                { Throwable error ->
+                  buildData.error(jobItem, error)
+                  throw error
+                },
+                {
+                  log.info "Archiving tests for job item ${jobItem.jobID} with pattern ${jobItem.testsArchivePattern}"
+                  dir(jobItem.affectedPath ?: jobItem.buildWorkDir) {
+                    junit allowEmptyResults: true, testResults: jobItem.testsArchivePattern
+                  }
+                })
           }
         }]
       }
-      //failfast currently doesn't add much, because jenkins sets -Dmaven.test.failure.ignore=true
-      //https://issues.jenkins-ci.org/browse/JENKINS-24655
+      //failfast currently doesn't add much, because we are defining -Dmaven.test.failure.ignore=true on our settings.xml
       entries.failFast = !ignoreFailures
-
       parallel entries
     } catch (Exception e) {
-      println "Tests have failed: ${e}"
+      log.warn "Tests have failed: ${e}"
 
       if (ignoreFailures) {
         currentBuild.result = Result.UNSTABLE
       } else {
-        throw e
+        error "$e"
       }
     }
 

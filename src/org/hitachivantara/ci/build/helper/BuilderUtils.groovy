@@ -22,7 +22,15 @@
 
 package org.hitachivantara.ci.build.helper
 
+import com.cloudbees.groovy.cps.NonCPS
+import hudson.AbortException
+import hudson.model.Result
+import hudson.model.Run
+import hudson.scm.ChangeLogSet
+import jenkins.model.CauseOfInterruption
 import org.hitachivantara.ci.JobItem
+import org.hitachivantara.ci.config.BuildData
+import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
 
 import java.util.Map.Entry
 import java.util.regex.Matcher
@@ -198,4 +206,123 @@ class BuilderUtils {
     }
   }
 
+  /**
+   * execute the shell command, but handle the exit code for proper logging
+   * @param String cmd
+   * @param Script dsl
+   */
+  static void process(String cmd, Script dsl) throws Exception {
+    int exitCode = dsl.sh(returnStatus:true, script:cmd)
+    if (exitCode != 0) {
+      int signal = getErrorSignal(exitCode)
+      if (signal == 15) {
+        // someone killed this process, could have been caused by a failFast error or a user aborted the job.
+        throw new FlowInterruptedException(Result.NOT_BUILT, new CauseOfInterruption() {
+          @Override
+          String getShortDescription() {
+            return 'Job item was terminated: SIGTERM'
+          }
+        })
+      }
+      throw new AbortException("script returned exit code $exitCode")
+    }
+  }
+
+  static int getExitCode(String cause) {
+    def matcher = (cause =~ /script returned exit code (\d+)/)
+    def exitCode = 0
+    if (matcher.matches() && matcher.hasGroup()) {
+      exitCode = matcher.group(1).toInteger()
+    }
+    return exitCode
+  }
+
+  /**
+   * list of known reserved exit codes http://www.tldp.org/LDP/abs/html/exitcodes.html
+   * 1       SIGHUP (hang up)
+   * 2       SIGINT (interrupt)
+   * 3       SIGQUIT (quit)
+   * 6       SIGABRT (abort)
+   * 9       SIGKILL (non-catchable, non-ignorable kill)
+   * 14      SIGALRM (alarm clock)
+   * 15      SIGTERM (software termination signal)
+   *
+   * @param exitCode
+   * @return
+   */
+  static int getErrorSignal(int exitCode) {
+    // 128+n  --> Fatal error signal "n"
+    if (exitCode > 128 && exitCode <= 143) return exitCode ^ 128
+    return 0
+  }
+
+  @NonCPS
+  static <T> List<T> intersect(List<T> listA, List<T> listB) {
+    if (listB) {
+      return listA.intersect(listB)
+    }
+    return listA
+  }
+
+  /**
+   * If previous success build is null, then this is the first build or there are no previous successful builds,
+   * return null to trigger a new build.
+   * If changes are an empty list, then nothing changed, return empty list to skip this build
+   *
+   * @return null if no successful builds, List otherwise
+   */
+  @NonCPS
+  static List<String> getChangeSet(Script dsl) {
+    // find the latest successful build and get the change list
+    List<String> changeSet = []
+    def build = dsl.currentBuild.rawBuild
+    Run r = build.previousSuccessfulBuild
+
+    if (!r) return null
+
+    while (build?.number > r.number) {
+      build.changeSets.each { ChangeLogSet log ->
+        log.items.each { ChangeLogSet.Entry entry ->
+          changeSet += entry.affectedPaths
+        }
+      }
+      build = build.previousBuild
+    }
+    return changeSet
+  }
+
+  /**
+   * If this job can be skipped
+   * @param jobItem
+   * @return Closure that does nothing, null otherwise
+   */
+  static Closure canBeSkipped(JobItem jobItem, BuildData buildData, Script dsl, boolean testPhase = false) {
+    if (buildData.noop || jobItem.isExecNoop()) {
+      return { -> dsl.log.info "${jobItem.jobID}: NOOP so not building ${jobItem.scmLabel}" }
+    }
+    if (testPhase && !jobItem.testable) {
+      return { -> dsl.log.info "${jobItem.jobID}: skipped ${jobItem.scmLabel} (not testable)" }
+    }
+    if (jobItem.isExecAuto() && getChangeSet(dsl)?.empty) {
+      return { -> dsl.log.info "${jobItem.jobID}: skipped ${jobItem.scmLabel} (no changes)" }
+    }
+    return null
+  }
+
+  static List<List<?>> organizeItems(List<?> items) {
+    if (!items) return items
+    def result = []
+    def remaining = []
+    items.each {
+      switch (it) {
+        case List:
+          result += it.remove(0)
+          if (it) remaining << it
+          break
+        default:
+          result << it
+      }
+    }
+    return [result] + organizeItems(remaining)
+  }
 }

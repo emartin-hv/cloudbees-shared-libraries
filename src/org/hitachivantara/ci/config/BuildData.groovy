@@ -62,6 +62,11 @@ class BuildData implements Serializable {
 
   static final String MAVEN_DEFAULT_COMMAND_OPTIONS = 'MAVEN_DEFAULT_COMMAND_OPTIONS'
   static final String MAVEN_DEFAULT_DIRECTIVES = 'MAVEN_DEFAULT_DIRECTIVES'
+  static final String MAVEN_RESOLVE_REPO_URL = 'MAVEN_RESOLVE_REPO_URL'
+  static final String MAVEN_PUBLIC_RELEASE_REPO_URL = 'MAVEN_PUBLIC_RELEASE_REPO_URL'
+  static final String MAVEN_PUBLIC_SNAPSHOT_REPO_URL = 'MAVEN_PUBLIC_SNAPSHOT_REPO_URL'
+  static final String MAVEN_PRIVATE_RELEASE_REPO_URL = 'MAVEN_PRIVATE_RELEASE_REPO_URL'
+  static final String MAVEN_PRIVATE_SNAPSHOT_REPO_URL = 'MAVEN_PRIVATE_SNAPSHOT_REPO_URL'
   static final String JENKINS_MAVEN_FOR_BUILDS = 'JENKINS_MAVEN_FOR_BUILDS'
   static final String MAVEN_OPTS = 'MAVEN_OPTS'
   static final String MAVEN_TEST_OPTS = 'MAVEN_TEST_OPTS'
@@ -154,11 +159,12 @@ class BuildData implements Serializable {
     Boolean.valueOf( buildProperties[NOOP] )
   }
 
-  void error(JobItem ji, Throwable e) {
+  // I would prefer to use concurrent maps, but... CPS didn't like it much
+  synchronized void error(JobItem ji, Throwable e) {
     buildStatus
         .get('errors', [:])
         .get(buildProperties[STAGE_NAME], [:])
-        .put(ji.jobID, e)
+        .put(ji, e)
   }
 
   Boolean hasErrors(){
@@ -166,25 +172,37 @@ class BuildData implements Serializable {
   }
 
   String getErrorsString(int limit = 0) {
+    int indent = 2
     StringBuilder sb = new StringBuilder()
     sb << 'Errors:'
 
     if (hasErrors()) {
-      buildStatus.errors.each { String stage, Map stageErrors ->
-        sb << '\n'
-        sb << "   [${stage}]"
+      def spacer = { int current, int longest ->
+        if (current == longest) return ' '
+        ' ' * (longest - current + 1)
+      }
+      buildStatus.errors.each { String stage, Map<JobItem, ?> stageErrors ->
         Map errorsToList = (limit ? stageErrors.take(limit) : stageErrors)
-        errorsToList.keySet().each { String jobId ->
-          sb << '\n'
-          sb << "     ${jobId}"
+        Set<JobItem> keys = errorsToList.keySet()
+        int longest = keys.sort({a,b -> b.jobID.size() <=> a.jobID.size()})[0].jobID.size()
+
+        sb << '\n' << ' ' * indent
+        sb << "[${stage}]"
+        keys.each { JobItem jobItem ->
+          sb << '\n' << ' ' * indent*2
+          sb << jobItem.jobID
+          sb << spacer(jobItem.jobID.size(), longest) << ': '
+          sb << jobItem.scmUrl
+          sb << " (${jobItem.scmBranch})"
         }
         if (limit && stageErrors.size() > limit) {
-          sb << '\n'
-          sb << "     (...)"
+          sb << '\n' << ' ' * indent*2
+          sb << '(...)'
         }
       }
     } else {
-      sb << ' No errors'
+      sb << '\n' << ' ' * indent
+      sb << 'No errors'
     }
 
     return sb.toString()

@@ -97,13 +97,18 @@ class BuildDataBuilder {
     Map defaultProperties = loadDefaultProperties(mergedProperties)
     mergedProperties << defaultProperties
 
+    // apply any param overrides given
+    Map overridenParams = [:]
+    overridenParams << params
+    overridenParams << parseOverrides(params)
+
     // send the params in here too so we can get the build file from it
     // but don't merge the params yet cause we want them after the build file properties
-    Map buildData = loadBuildData(mergedProperties + params)
+    Map buildData = loadBuildData(mergedProperties + overridenParams)
     Map buildProperties = buildData['buildProperties'] as Map ?: [:]
     mergedProperties << buildProperties
 
-    mergedProperties << params
+    mergedProperties << overridenParams
 
     StringBuilder sb = new StringBuilder()
     sb << 'Resolved build properties:'
@@ -113,10 +118,10 @@ class BuildDataBuilder {
     }
     dsl.echo(sb.toString())
 
-    Map jobBuildMap = parseJobData(buildData['jobGroups'] as Map, mergedProperties)
+    Map<String, List<JobItem>> jobBuildMap = parseJobData(buildData['jobGroups'] as Map, mergedProperties)
     sb = new StringBuilder()
     sb << 'Job execution plan:'
-    jobBuildMap.each { String group, List jobItems ->
+    jobBuildMap.each { String group, List<JobItem> jobItems ->
       sb << '\n'
       sb << "[${group}]"
 
@@ -140,7 +145,7 @@ class BuildDataBuilder {
    * @param buildProperties
    * @return
    */
-  private Map parseJobData(Map jobGroups, Map buildProperties) {
+  private Map<String, List<JobItem>> parseJobData(Map jobGroups, Map buildProperties) {
     // read job parameter overrides
     Map jobOverrides = parseJobOverrides(buildProperties)
 
@@ -152,7 +157,7 @@ class BuildDataBuilder {
     // if a first/last job was defined
     boolean executeJobs = !firstJob
 
-    Map jobBuildMap = [:]
+    Map<String, List<JobItem>> jobBuildMap = [:]
 
     // parse the jobGroups in the build file into JobItems
     jobGroups.each { jobGroup, List jobs ->
@@ -219,6 +224,28 @@ class BuildDataBuilder {
     }
 
     return jobOverridesMap
+  }
+
+  /**
+   * Parses the OVERRIDE_PARAMS build parameter to be applied to the job configuration.
+   *
+   * @param buildProperties
+   * @return
+   */
+  private Map parseOverrides(Map buildProperties) {
+    String overridesParam = buildProperties.OVERRIDE_PARAMS?.trim() ? buildProperties.OVERRIDE_PARAMS : null
+    Map overridesMap = [:]
+
+    if (overridesParam) {
+      try {
+        overridesMap = new Yaml().load(overridesParam)
+      }
+      catch (Throwable e) {
+        throw new IllegalArgumentException('Wrong override param format. Use a valid yaml.', e)
+      }
+    }
+
+    return overridesMap
   }
 
   /**

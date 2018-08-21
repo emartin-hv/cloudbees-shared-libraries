@@ -39,8 +39,8 @@ class TestMavenChangeDetector extends Specification {
     setup:
       JobItem jobItem = new JobItem('', ['buildFramework': 'Maven', 'execType': 'auto'], [:])
       MavenBuilder builder = BuilderFactory.getBuildManager(jobItem, builderData) as MavenBuilder
-      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: builder)
-      ClosureInspectionHelper testHelper = new ClosureInspectionHelper(delegate: builder)
+      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: script)
+      ClosureInspectionHelper testHelper = new ClosureInspectionHelper(delegate: script)
 
     when: "there are no successful builds"
       def wrapper = GroovyMock(RunWrapper) {
@@ -68,8 +68,8 @@ class TestMavenChangeDetector extends Specification {
     setup:
       JobItem jobItem = new JobItem('', ['buildFramework': 'Maven', 'execType': 'auto'], [:])
       MavenBuilder builder = BuilderFactory.getBuildManager(jobItem, builderData) as MavenBuilder
-      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: builder)
-      ClosureInspectionHelper testHelper = new ClosureInspectionHelper(delegate: builder)
+      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: script)
+      ClosureInspectionHelper testHelper = new ClosureInspectionHelper(delegate: script)
 
     when: "there are no changes present"
       def prevBuild = Mock(AbstractBuild) {
@@ -117,7 +117,7 @@ class TestMavenChangeDetector extends Specification {
           ['buildFramework': 'Maven', 'execType': 'auto'] + overrides,
           ['BUILDS_ROOT_PATH': 'test/resources/multi-module-profiled-project'])
       MavenBuilder builder = BuilderFactory.getBuildManager(jobItem, builderData) as MavenBuilder
-      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: builder)
+      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: script)
 
     when: "there are changes present"
       def wrapper = GroovyMock(RunWrapper) {
@@ -153,11 +153,11 @@ class TestMavenChangeDetector extends Specification {
       ]
 
       expected << [
-          'mvn install -DskipTests -Daether.connector.resumeDownloads=false -f pom.xml -pl \'sub-1,sub-3\' -amd',
-          'mvn install -DskipTests -Daether.connector.resumeDownloads=false -DskipDefault -P profile-A -f pom.xml -pl \'sub-1\' -amd',
-          'mvn install -DskipTests -Daether.connector.resumeDownloads=false -f pom.xml -pl \'sub-3\' -amd',
-          'mvn install -DskipTests -Daether.connector.resumeDownloads=false -f sub-1/pom.xml -amd',
-          'mvn install -DskipTests -Daether.connector.resumeDownloads=false -f pom.xml -amd',
+          'mvn install -Daether.connector.resumeDownloads=false -DskipTests -f pom.xml -pl \'sub-1,sub-3\' -amd',
+          'mvn install -Daether.connector.resumeDownloads=false -DskipTests -DskipDefault -P profile-A -f pom.xml -pl \'sub-1\' -amd',
+          'mvn install -Daether.connector.resumeDownloads=false -DskipTests -f pom.xml -pl \'sub-3\' -amd',
+          'mvn install -Daether.connector.resumeDownloads=false -DskipTests -f sub-1/pom.xml -amd',
+          'mvn install -Daether.connector.resumeDownloads=false -DskipTests -f pom.xml -amd',
           null,
       ]
 
@@ -188,7 +188,7 @@ class TestMavenChangeDetector extends Specification {
           ['buildFramework': 'Maven', 'execType': 'auto'] + overrides,
           ['BUILDS_ROOT_PATH': 'test/resources/multi-module-profiled-project'])
       MavenBuilder builder = BuilderFactory.getBuildManager(jobItem, builderData) as MavenBuilder
-      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: builder)
+      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: script)
 
     when: "there are changes present"
       def wrapper = GroovyMock(RunWrapper) {
@@ -295,7 +295,7 @@ class TestMavenChangeDetector extends Specification {
           ['buildFramework': 'Maven', 'execType': 'auto'],
           ['BUILDS_ROOT_PATH': 'test/resources/multi-module-profiled-project'])
       MavenBuilder builder = BuilderFactory.getBuildManager(jobItem, builderData) as MavenBuilder
-      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: builder)
+      ClosureInspectionHelper buildHelper = new ClosureInspectionHelper(delegate: script)
 
     when: "we execute the build instance"
       Closure mvnBuild = builder.getBuildClosure(jobItem)
@@ -317,12 +317,12 @@ class TestMavenChangeDetector extends Specification {
       [[], Result.SUCCESS]                | [[], Result.SUCCESS]                                 | [[], null]
 
       expected << [
-          'mvn clean install -DskipTests -Daether.connector.resumeDownloads=false -f pom.xml -pl \'sub-3\' -amd',
-          'mvn clean install -DskipTests -Daether.connector.resumeDownloads=false -f pom.xml -pl \'sub-1,sub-3\' -amd',
-          'mvn clean install -DskipTests -Daether.connector.resumeDownloads=false',
-          'mvn clean install -DskipTests -Daether.connector.resumeDownloads=false -f pom.xml -pl \'sub-1,sub-3/sub-1\' -amd',
-          'mvn clean install -DskipTests -Daether.connector.resumeDownloads=false -f pom.xml -pl \'sub-2\' -amd',
-          'mvn clean install -DskipTests -Daether.connector.resumeDownloads=false -f pom.xml -pl \'sub-2/sub-1\' -amd',
+          'mvn clean install -Daether.connector.resumeDownloads=false -DskipTests -f pom.xml -pl \'sub-3\' -amd',
+          'mvn clean install -Daether.connector.resumeDownloads=false -DskipTests -f pom.xml -pl \'sub-1,sub-3\' -amd',
+          'mvn clean install -Daether.connector.resumeDownloads=false -DskipTests',
+          'mvn clean install -Daether.connector.resumeDownloads=false -DskipTests -f pom.xml -pl \'sub-1,sub-3/sub-1\' -amd',
+          'mvn clean install -Daether.connector.resumeDownloads=false -DskipTests -f pom.xml -pl \'sub-2\' -amd',
+          'mvn clean install -Daether.connector.resumeDownloads=false -DskipTests -f pom.xml -pl \'sub-2/sub-1\' -amd',
           null,
       ]
   }

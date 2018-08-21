@@ -118,14 +118,19 @@ class GradleBuilder implements IBuilder {
     }
   }
 
+  List<List<JobItem>> expandWorkItem(JobItem jobItem) {
+    dsl.log.warn "Expanding jobItem not implemented for Gradle, reverting to normal"
+    [[jobItem]]
+  }
+
   Closure getGradleDsl(JobItem jobItem, String gradleCmd) {
     Map buildProperties = buildData.getBuildProperties()
 
-    return {
+    return { ->
       dsl.dir(jobItem.buildWorkDir) {
-        dsl.withEnv(["PATH=${dsl.tool "${buildProperties[JENKINS_GRADLE_FOR_BUILDS]}"}/bin:${dsl.env.PATH}",
+        dsl.withEnv(["PATH+GRADLE=${dsl.tool "${buildProperties[JENKINS_GRADLE_FOR_BUILDS]}"}/bin",
                      "JAVA_HOME=${dsl.tool "${buildProperties[JENKINS_JDK_FOR_BUILDS]}"}"]) {
-          dsl.sh "${gradleCmd}"
+          BuilderUtils.process(gradleCmd, dsl)
         }
       }
     }

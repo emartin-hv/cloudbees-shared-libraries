@@ -39,7 +39,7 @@ class JobItem implements Serializable {
 
   // Build framework definitions
   static enum BuildFramework {
-    AUTO, MAVEN, ANT, GRADLE
+    AUTO, MAVEN, ANT, GRADLE, JENKINS_JOB
   }
 
   private static List<Pattern> GIT_URL_PATTERNS = [
@@ -65,7 +65,12 @@ class JobItem implements Serializable {
       [name: 'buildFramework', defaults: BuildFramework.MAVEN],
       [name: 'execType', defaults: ExecutionType.FORCE],
       [name: 'archivable', defaults: true],
-      [name: 'artifactsArchivePattern', defaults: null]
+      [name: 'artifactsArchivePattern', defaults: null],
+      [name: 'parallelize', defaults: false],
+      [name: 'asynchronous', defaults: false],
+      [name: 'properties', defaults: null],
+      [name: 'targetJobName', defaults: null],
+      [name: 'passOnBuildParameters', defaults: true]
   ]
 
   JobItem(String jobGroup, Map jobData, Map buildProperties) {
@@ -126,7 +131,7 @@ class JobItem implements Serializable {
       case String:
         data.buildFramework = BuildFramework.valueOf(framework.toUpperCase())
         break
-      case ExecutionType:
+      case BuildFramework:
       case null:
         data.buildFramework = framework
         break
@@ -264,12 +269,51 @@ class JobItem implements Serializable {
     data.execType == ExecutionType.NOOP
   }
 
-  Boolean isArchivable(){
+  boolean isArchivable(){
     return data.archivable
+  }
+
+  boolean isParallel() {
+    return data.parallelize
+  }
+
+  void setAffectedPath(String path) {
+    data.affectedPath = path
+  }
+
+  String getAffectedPath() {
+    return data.affectedPath
   }
 
   String getArtifactsArchivePattern(){
     data.artifactsArchivePattern
+  }
+
+  JobItem clone() {
+    Map jobData = configurable.collectEntries { Map config ->
+      [(config.name): data[config.name]]
+    }
+    return new JobItem(this.jobGroup, jobData, buildProperties)
+  }
+
+  Boolean isAsynchronous(){
+    return data.asynchronous
+  }
+
+  Map getJobProperties(){
+    data.properties as Map
+  }
+
+  Boolean doCheckout() {
+    return !execNoop && (buildFramework != JobItem.BuildFramework.JENKINS_JOB)
+  }
+
+  String getTargetJobName(){
+    return data.targetJobName
+  }
+
+  Boolean passOnBuildParameters() {
+    return data.passOnBuildParameters
   }
 
   String toString() {
@@ -298,5 +342,4 @@ class JobItem implements Serializable {
         checkoutDir : checkoutDir
     ]
   }
-
 }

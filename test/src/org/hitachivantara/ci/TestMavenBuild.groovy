@@ -95,10 +95,10 @@ class TestMavenBuild extends Specification {
       ]
 
       expected << [
-          'mvn clean install -B -e -DskipTests -Daether.connector.resumeDownloads=false',
+          'mvn clean install -B -e -Daether.connector.resumeDownloads=false -DskipTests',
           null,
-          'mvn package -B -e -DskipTests -Daether.connector.resumeDownloads=false',
-          'mvn install -B -e -f ./core/pom.xml -DskipTests -Daether.connector.resumeDownloads=false'
+          'mvn package -B -e -Daether.connector.resumeDownloads=false -DskipTests',
+          'mvn install -B -e -f ./core/pom.xml -Daether.connector.resumeDownloads=false -DskipTests'
       ]
   }
 
@@ -128,10 +128,10 @@ class TestMavenBuild extends Specification {
 
     where:
       jobData                                             || expected
-      ['buildFramework': 'Maven']                         || 'mvn test -DsurefireArgLine=-Xmx1g -Daether.connector.resumeDownloads=false'
+      ['buildFramework': 'Maven']                         || 'mvn test -Daether.connector.resumeDownloads=false -DsurefireArgLine=-Xmx1g'
       ['buildFramework': 'Maven', 'execType': 'noop']     || null
       ['buildFramework': 'Maven', 'testable': false]      || null
-      ['buildFramework': 'Maven', 'buildFile': 'pom.xml'] || 'mvn test -f pom.xml -DsurefireArgLine=-Xmx1g -Daether.connector.resumeDownloads=false'
+      ['buildFramework': 'Maven', 'buildFile': 'pom.xml'] || 'mvn test -f pom.xml -Daether.connector.resumeDownloads=false -DsurefireArgLine=-Xmx1g'
   }
 
   @Unroll
@@ -170,10 +170,10 @@ class TestMavenBuild extends Specification {
       ]
 
       expected << [
-          'mvn test -DsurefireArgLine=-Xmx1g -Daether.connector.resumeDownloads=false -Daudit -P core',
+          'mvn test -Daether.connector.resumeDownloads=false -DsurefireArgLine=-Xmx1g -Daudit -P core',
           'mvn test -Daether.connector.resumeDownloads=false',
           'mvn test -Daether.connector.resumeDownloads=false -Daudit',
-          'mvn test -DsurefireArgLine=-Xmx1g -Daether.connector.resumeDownloads=false'
+          'mvn test -Daether.connector.resumeDownloads=false -DsurefireArgLine=-Xmx1g'
       ]
   }
 }
